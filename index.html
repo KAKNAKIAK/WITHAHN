@@ -407,7 +407,7 @@
                 contentHtml = `
                     <div class="p-4 animate-fade-in">
                         <div class="flex items-center justify-between mb-4">
-                            <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">${state.isAdmin ? '상품 관리 (DB)' : '추천 상품'}</h2>
+                            <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">${state.isAdmin ? '상품 관리 (DB)' : '추천 추가 상품'}</h2>
                             ${state.isAdmin ? `<button onclick="actions.addProduct()" class="bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-sm"><i data-lucide="plus" width="14"></i> 상품 추가</button>` : ''}
                         </div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${productItems}</div>
