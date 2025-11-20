@@ -31,7 +31,7 @@
         import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ==========================================
-        // 1. Firebase 설정 (실제 운영용)
+        // 1. Firebase 설정
         // ==========================================
         
         const firebaseConfig = {
@@ -44,12 +44,10 @@
             measurementId: "G-TBD9W8B634"
         };
 
-        // AI 환경 변수 무시하고 실제 설정 강제 적용
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
 
-        // 실제 운영용 컬렉션 명칭
         const COLLECTION_NAME = 'travel_products'; 
 
         // ==========================================
@@ -57,14 +55,15 @@
         // ==========================================
 
         const LOGO_IMAGE_URL = "https://cdn.monkeytravel.com/userCompany/1058603/logo/1067e5528b654db1c03737ce896c459c.png";
-        const ADMIN_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"; // "1234"
+        
+        // 비밀번호 "1233"을 Base64로 인코딩한 값
+        const ADMIN_PASSWORD_ENCODED = "MTIzMw=="; 
 
         const INITIAL_SAMPLE_DATA = [
             {
                 productName: "푸꾸옥 프라이빗 렌트카 투어 (기사포함)",
                 category: "우리만 (Private)",
                 heroImage: "https://images.unsplash.com/photo-1586943101559-4cdcf86a6f87?auto=format&fit=crop&q=80&w=1000",
-                location: "베트남, 푸꾸옥 전역",
                 operatingHours: "09:00 - 21:00 (자유 일정)",
                 description: "우리끼리만 편안하게! 원하는 일정대로 자유롭게 이동하는 프라이빗 렌트카 서비스입니다. \n베테랑 현지 기사님이 안전하게 모십니다. (유류비, 기사님 식대 포함)",
                 pricingOptions: [
@@ -76,7 +75,7 @@
                     cancellation: "이용일 2일 전까지 무료 취소 가능",
                     refundInfo: "차량 배차 확정 후 당일 취소 시 100% 수수료가 발생합니다.",
                     usageMethod: "상담을 통해 일정 확정 후, 카카오톡으로 기사님 정보를 보내드립니다.",
-                    inclusions: ["전용 차량", "현지 기사", "유류비", "주차비"],
+                    // inclusions 제거됨
                 },
                 details: { notes: ["기사님은 간단한 영어 소통만 가능합니다."] },
                 faq: [{ q: "기사님이 한국어를 하시나요?", a: "아니요, 현지 기사님이지만 번역기를 통해 소통에 문제 없습니다." }]
@@ -85,7 +84,6 @@
                 productName: "빈펄 사파리 & 빈원더스 콤보권",
                 category: "금까기 (Ticket)",
                 heroImage: "https://images.unsplash.com/photo-1575550959106-5a7defe28b56?auto=format&fit=crop&q=80&w=1000",
-                location: "베트남, 빈펄 랜드",
                 operatingHours: "09:00 - 19:30",
                 description: "아시아 최대 야생 사파리와 테마파크를 한 번에! \n하루 종일 즐기는 환상의 나라로 초대합니다. QR 코드로 바로 입장하세요.",
                 pricingOptions: [
@@ -96,7 +94,7 @@
                     cancellation: "QR 발권 전 무료 취소",
                     refundInfo: "사용 처리된 QR 코드는 환불 불가합니다.",
                     usageMethod: "이메일로 발송된 E-티켓을 입구에서 제시하세요.",
-                    inclusions: ["사파리 입장권", "빈원더스 입장권"],
+                    // inclusions 제거됨
                 },
                 faq: [{ q: "셔틀버스는 무료인가요?", a: "네, 무료 셔틀을 운행합니다." }]
             }
@@ -120,12 +118,9 @@
 
         const formatCurrency = (amount) => new Intl.NumberFormat('ko-KR').format(amount);
 
-        async function checkPassword(input) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(input);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('') === ADMIN_PASSWORD_HASH;
+        function checkPassword(input) {
+            if (!input) return false;
+            return btoa(input.trim()) === ADMIN_PASSWORD_ENCODED;
         }
 
         function showToast(message, type = 'success') {
@@ -137,12 +132,11 @@
         function setState(callback) { callback(state); render(); }
 
         // ==========================================
-        // 3. Firebase Logic (Real DB Connection)
+        // 3. Firebase Logic
         // ==========================================
 
         const initAuth = async () => {
             try {
-                // 실제 운영용: 익명 로그인 시도
                 await signInAnonymously(auth);
             } catch (error) {
                 console.error("Auth Error:", error);
@@ -155,14 +149,9 @@
             onAuthStateChanged(auth, (user) => {
                 state.currentUser = user;
 
-                // 유저가 없으면 로딩 중단 (로그인 실패 시)
-                if (!user) {
-                    console.warn("No authenticated user.");
-                    return;
-                }
+                if (!user) return;
 
                 try {
-                    // 실제 DB 컬렉션 구독
                     const q = collection(db, COLLECTION_NAME);
                     
                     onSnapshot(q, (snapshot) => {
@@ -182,10 +171,8 @@
                             }
                         });
                     }, (error) => {
-                        // [중요] 오류 발생 시 데모 모드로 빠지지 않고 에러 출력
                         console.error("Firestore Listen Error:", error);
                         setState(s => s.loading = false);
-                        
                         if (error.code === 'permission-denied') {
                             showToast("⚠️ 권한 오류: Firebase Console > Rules 설정이 필요합니다.", "error");
                         } else {
@@ -199,16 +186,15 @@
             });
         };
 
-        // 안전장치: 10초 이상 로딩 시 타임아웃 안내
         setTimeout(() => {
             if (state.loading) {
                 setState(s => s.loading = false);
-                showToast("네트워크 응답이 없습니다. 인터넷 연결을 확인하세요.", "error");
+                showToast("네트워크 응답이 없습니다.", "error");
             }
         }, 10000);
 
         // ==========================================
-        // 4. Actions (Strict DB Mode)
+        // 4. Actions
         // ==========================================
         window.actions = {
             toggleAuthModal: (show) => setState(s => s.showAuthModal = show),
@@ -216,12 +202,18 @@
                 if (state.isAdmin) setState(s => s.isAdmin = false);
                 else setState(s => s.showAuthModal = true);
             },
-            handleAdminLogin: async (e) => {
-                e.preventDefault();
-                if (await checkPassword(state.passwordInput)) {
-                    setState(s => { s.isAdmin = true; s.showAuthModal = false; s.passwordInput = ""; s.loginError = false; });
-                    showToast("관리자 모드 로그인 완료");
-                } else setState(s => s.loginError = true);
+            handleAdminLogin: () => {
+                try {
+                    if (checkPassword(state.passwordInput)) {
+                        setState(s => { s.isAdmin = true; s.showAuthModal = false; s.passwordInput = ""; s.loginError = false; });
+                        showToast("관리자 모드 로그인 완료");
+                    } else {
+                        setState(s => s.loginError = true);
+                    }
+                } catch (err) {
+                    console.error("Login Error:", err);
+                    showToast("로그인 오류", "error");
+                }
             },
             updatePasswordInput: (val) => { state.passwordInput = val; },
             selectProduct: (id) => {
@@ -236,11 +228,10 @@
                     productName: "",
                     heroImage: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000",
                     category: "신규",
-                    location: "",
                     operatingHours: "09:00 - 18:00",
                     description: "",
                     pricingOptions: [],
-                    policies: {},
+                    policies: { cancellation: "" }, // inclusions 제거됨
                     faq: []
                 };
                 setState(s => { s.viewData = newProduct; s.selectedProductId = 'temp_new_id'; s.isNewProduct = true; s.activeTab = 'info'; });
@@ -251,8 +242,6 @@
                     showToast("로그인이 필요하거나 데이터가 없습니다.", "error");
                     return;
                 }
-
-                // 실제 DB에 저장 시도
                 try {
                     const colRef = collection(db, COLLECTION_NAME);
                     if (state.isNewProduct) {
@@ -272,7 +261,6 @@
 
             initiateDelete: (e, id) => { e.stopPropagation(); setState(s => s.deleteTargetId = id); },
             cancelDelete: () => setState(s => s.deleteTargetId = null),
-            
             executeDelete: async () => {
                 if (!state.deleteTargetId) return;
                 try {
@@ -306,6 +294,22 @@
             },
             removeOption: (idx) => setState(s => s.viewData.pricingOptions.splice(idx, 1)),
             updateOption: (idx, field, value) => setState(s => s.viewData.pricingOptions[idx][field] = value),
+
+            // 규정(Policy) 관리
+            updatePolicy: (field, value) => setState(s => {
+                if (!s.viewData.policies) s.viewData.policies = {};
+                s.viewData.policies[field] = value;
+            }),
+
+            // FAQ 관리
+            addFaq: () => {
+                setState(s => {
+                    if (!s.viewData.faq) s.viewData.faq = [];
+                    s.viewData.faq.push({ q: '', a: '' });
+                });
+            },
+            removeFaq: (idx) => setState(s => s.viewData.faq.splice(idx, 1)),
+            updateFaq: (idx, field, value) => setState(s => s.viewData.faq[idx][field] = value),
         };
 
         // ==========================================
@@ -328,7 +332,26 @@
 
             let authModalHtml = '';
             if (state.showAuthModal) {
-                authModalHtml = `<div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] px-4 backdrop-blur-sm animate-fade-in"><div class="bg-white rounded-xl p-6 w-full max-w-xs shadow-2xl"><div class="text-center mb-4"><h3 class="font-bold text-lg">관리자 접근</h3><p class="text-xs text-gray-500">비밀번호(1234)를 입력하세요.</p></div><form onsubmit="actions.handleAdminLogin(event)"><input type="password" value="${state.passwordInput}" oninput="actions.updatePasswordInput(this.value)" class="w-full p-3 border border-gray-300 rounded-lg mb-3 text-center outline-none" placeholder="Password" autofocus /><div class="flex gap-2"><button type="button" onclick="actions.toggleAuthModal(false)" class="flex-1 py-3 bg-gray-200 rounded-lg font-bold text-sm">취소</button><button type="submit" class="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-bold text-sm">확인</button></div></form></div></div>`;
+                authModalHtml = `
+                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] px-4 backdrop-blur-sm animate-fade-in">
+                        <div class="bg-white rounded-xl p-6 w-full max-w-xs shadow-2xl">
+                            <div class="text-center mb-4">
+                                <h3 class="font-bold text-lg">관리자 접근</h3>
+                                <p class="text-xs text-gray-500">비밀번호를 입력하세요.</p>
+                            </div>
+                            <div onkeyup="if(event.key === 'Enter') actions.handleAdminLogin()">
+                                <input type="password" value="${state.passwordInput}" 
+                                    oninput="actions.updatePasswordInput(this.value)" 
+                                    class="w-full p-3 border border-gray-300 rounded-lg mb-3 text-center outline-none focus:border-emerald-500 transition-colors" 
+                                    placeholder="Password" autofocus />
+                                ${state.loginError ? '<p class="text-red-500 text-xs text-center mb-3 font-bold">비밀번호가 올바르지 않습니다.</p>' : ''}
+                                <div class="flex gap-2">
+                                    <button onclick="actions.toggleAuthModal(false)" class="flex-1 py-3 bg-gray-200 rounded-lg font-bold text-sm hover:bg-gray-300 transition-colors">취소</button>
+                                    <button onclick="actions.handleAdminLogin()" class="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 transition-colors">확인</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
             }
 
             const navbarHtml = `
@@ -349,7 +372,7 @@
 
             let contentHtml = '';
             if (state.loading) {
-                contentHtml = `<div class="min-h-[80vh] flex flex-col items-center justify-center text-gray-400 gap-3"><i data-lucide="loader-2" class="animate-spin-custom text-emerald-600" width="32"></i><span class="text-sm">실제 데이터 불러오는 중...</span></div>`;
+                contentHtml = `<div class="min-h-[80vh] flex flex-col items-center justify-center text-gray-400 gap-3"><i data-lucide="loader-2" class="animate-spin-custom text-emerald-600" width="32"></i><span class="text-sm">데이터 불러오는 중...</span></div>`;
             } else if (!state.selectedProductId) {
                 let productItems = state.products.length === 0 ? 
                     `<div class="py-20 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl col-span-full">
@@ -365,8 +388,7 @@
                             </div>
                             <div class="p-4">
                                 <h3 class="font-bold text-gray-800 line-clamp-1 mb-1">${p.productName}</h3>
-                                <p class="text-xs text-gray-500 mb-3 flex items-center gap-1"><i data-lucide="map-pin" width="12"></i> ${p.location}</p>
-                                <div class="flex justify-between items-center border-t border-gray-100 pt-3">
+                                <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
                                     <span class="text-xs text-gray-400">옵션 ${p.pricingOptions?.length || 0}개</span>
                                     <div class="text-emerald-600 font-bold text-sm">안내 보기 →</div>
                                 </div>
@@ -385,7 +407,9 @@
                 const vd = state.viewData;
                 if (!state.isAdmin) {
                     const priceOptions = (vd.pricingOptions || []).map(opt => `<div class="p-4 flex justify-between items-center hover:bg-gray-50 transition-colors"><div class="pr-4"><div class="font-bold text-gray-800 text-base">${opt.name}</div>${opt.desc ? `<div class="text-xs text-gray-500 mt-1">${opt.desc}</div>` : ''}</div><div class="text-right shrink-0"><div class="font-bold text-emerald-600 text-lg">${formatCurrency(opt.price)}원</div><div class="text-xs text-gray-400 font-medium">${opt.unit}</div></div></div>`).join('');
-                    let tabContent = state.activeTab === 'info' ? `<p class="text-gray-600 text-sm whitespace-pre-line leading-relaxed">${vd.description}</p>` : (state.activeTab === 'policy' ? `<div class="space-y-4"><div class="bg-amber-50 border border-amber-100 p-4 rounded-lg text-sm"><h4 class="font-bold text-amber-700 mb-1">취소 규정</h4><p>${vd.policies?.cancellation || '-'}</p></div></div>` : (vd.faq || []).map(f => `<div class="bg-gray-50 p-4 rounded-lg text-sm border border-gray-100 mb-3"><div class="font-bold text-emerald-800 mb-2">Q. ${f.q}</div><div class="text-gray-600 pl-4">A. ${f.a}</div></div>`).join(''));
+                    
+                    // [변경] 포함사항 렌더링 제거
+                    let tabContent = state.activeTab === 'info' ? `<p class="text-gray-600 text-sm whitespace-pre-line leading-relaxed">${vd.description}</p>` : (state.activeTab === 'policy' ? `<div class="space-y-4"><div class="bg-amber-50 border border-amber-100 p-4 rounded-lg text-sm"><h4 class="font-bold text-amber-700 mb-1">취소 규정</h4><p class="whitespace-pre-line">${vd.policies?.cancellation || '-'}</p></div></div>` : (vd.faq || []).map(f => `<div class="bg-gray-50 p-4 rounded-lg text-sm border border-gray-100 mb-3"><div class="font-bold text-emerald-800 mb-2">Q. ${f.q}</div><div class="text-gray-600 pl-4">A. ${f.a}</div></div>`).join(''));
 
                     contentHtml = `
                         <div class="animate-fade-in">
@@ -393,7 +417,6 @@
                                 <img src="${vd.heroImage}" alt="Product" class="w-full h-full object-cover" />
                                 <button onclick="actions.backToList()" class="absolute top-4 left-4 bg-white/30 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/50 transition"><i data-lucide="chevron-left" width="24"></i></button>
                                 <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20 text-white">
-                                    <div class="flex items-center gap-1 text-sm mb-2 text-emerald-300 font-medium"><i data-lucide="map-pin" width="14"></i> ${vd.location}</div>
                                     <h2 class="text-2xl md:text-3xl font-bold leading-tight mb-1">${vd.productName}</h2>
                                 </div>
                             </div>
@@ -409,6 +432,20 @@
                         </div>`;
                 } else {
                     const optionsEdit = (vd.pricingOptions || []).map((opt, idx) => `<div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2"><button onclick="actions.removeOption(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" width="14"></i></button><div class="grid grid-cols-2 gap-2 mb-2 pr-6"><input placeholder="옵션명" class="p-1 border rounded text-sm" value="${opt.name}" oninput="actions.updateOption(${idx}, 'name', this.value)"><input placeholder="가격" type="number" class="p-1 border rounded text-sm text-right" value="${opt.price}" oninput="actions.updateOption(${idx}, 'price', this.value)"></div><div class="flex gap-2"><input placeholder="단위" class="w-1/4 p-1 border rounded text-xs text-center" value="${opt.unit}" oninput="actions.updateOption(${idx}, 'unit', this.value)"><input placeholder="설명" class="w-3/4 p-1 border rounded text-xs" value="${opt.desc}" oninput="actions.updateOption(${idx}, 'desc', this.value)"></div></div>`).join('');
+                    
+                    const faqEdit = (vd.faq || []).map((f, idx) => `
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2">
+                            <button onclick="actions.removeFaq(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" width="14"></i></button>
+                            <div class="mb-2 pr-6">
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1">질문 (Q)</label>
+                                <input class="w-full p-1 border rounded text-sm" value="${f.q}" oninput="actions.updateFaq(${idx}, 'q', this.value)">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 mb-1">답변 (A)</label>
+                                <textarea class="w-full p-1 border rounded text-sm" rows="2" oninput="actions.updateFaq(${idx}, 'a', this.value)">${f.a}</textarea>
+                            </div>
+                        </div>
+                    `).join('');
 
                     contentHtml = `
                         <div class="bg-white min-h-screen p-6 animate-fade-in">
@@ -417,8 +454,39 @@
                                 <div class="flex gap-2"><button onclick="actions.backToList()" class="px-3 py-2 bg-gray-200 rounded text-xs font-bold text-gray-600">취소</button><button onclick="actions.saveProduct()" class="px-4 py-2 bg-emerald-600 text-white rounded text-xs font-bold hover:bg-emerald-700">저장</button></div>
                             </div>
                             <form class="space-y-6" onsubmit="event.preventDefault()">
-                                <section class="space-y-3"><label class="block text-xs font-bold text-gray-500">상품명</label><input type="text" value="${vd.productName}" oninput="actions.updateViewData('productName', this.value)" class="w-full p-2 border border-gray-300 rounded font-bold text-sm" /><label class="block text-xs font-bold text-gray-500">설명</label><textarea rows="4" oninput="actions.updateViewData('description', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm">${vd.description}</textarea></section>
-                                <section class="space-y-3 border-t pt-4"><div class="flex justify-between items-center"><h3 class="font-bold text-sm text-gray-800">요금 옵션</h3><button onclick="actions.addOption()" class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex items-center gap-1"><i data-lucide="plus" width="12"></i> 추가</button></div><div>${optionsEdit}</div></section>
+                                <section class="space-y-3">
+                                    <label class="block text-xs font-bold text-gray-500">상품명</label>
+                                    <input type="text" value="${vd.productName}" oninput="actions.updateViewData('productName', this.value)" class="w-full p-2 border border-gray-300 rounded font-bold text-sm" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">카테고리</label>
+                                    <input type="text" value="${vd.category || ''}" oninput="actions.updateViewData('category', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm" placeholder="예: 우리만 (Private)" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">이미지 URL</label>
+                                    <input type="text" value="${vd.heroImage}" oninput="actions.updateViewData('heroImage', this.value)" class="w-full p-2 border border-gray-300 rounded text-xs font-mono text-gray-500" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">설명</label>
+                                    <textarea rows="4" oninput="actions.updateViewData('description', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm">${vd.description}</textarea>
+                                </section>
+
+                                <section class="space-y-3 border-t pt-4">
+                                    <h3 class="font-bold text-sm text-gray-800">규정 및 정책</h3>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-1">취소/환불 규정</label>
+                                        <textarea rows="3" oninput="actions.updatePolicy('cancellation', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm">${vd.policies?.cancellation || ''}</textarea>
+                                    </div>
+                                    <!-- [변경] 포함 사항 입력란 제거됨 -->
+                                </section>
+
+                                <section class="space-y-3 border-t pt-4">
+                                    <div class="flex justify-between items-center"><h3 class="font-bold text-sm text-gray-800">요금 옵션</h3><button onclick="actions.addOption()" class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex items-center gap-1"><i data-lucide="plus" width="12"></i> 추가</button></div>
+                                    <div>${optionsEdit}</div>
+                                </section>
+
+                                <section class="space-y-3 border-t pt-4">
+                                    <div class="flex justify-between items-center"><h3 class="font-bold text-sm text-gray-800">FAQ (자주 묻는 질문)</h3><button onclick="actions.addFaq()" class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex items-center gap-1"><i data-lucide="plus" width="12"></i> 추가</button></div>
+                                    <div>${faqEdit}</div>
+                                </section>
+
                                 <div class="h-12"></div>
                             </form>
                         </div>`;
