@@ -215,7 +215,17 @@
                     showToast("로그인 오류", "error");
                 }
             },
-            updatePasswordInput: (val) => { state.passwordInput = val; },
+            // [수정] 비밀번호 입력 시에는 화면 갱신 필요 (에러 메시지 초기화 등 UI 반응 필요할 수 있음)
+            // 단, 여기서는 렌더링을 최소화하기 위해 필요한 경우에만 setState 호출 권장하나, 
+            // 로그인 창은 입력 빈도가 낮으므로 기존 유지해도 무방. 하지만 끊김 방지를 위해 state 직접 수정으로 변경.
+            updatePasswordInput: (val) => { 
+                state.passwordInput = val; 
+                // 비밀번호 입력창은 별도 모달이므로 리렌더링 안 해도 입력 자체는 됨 (value 바인딩 구조상)
+                // 하지만 리액트가 아니므로 value={state...}가 갱신되려면 리렌더링 필요함.
+                // 바닐라 JS 구조상 input의 'value' 속성은 초기값이고, 입력시 DOM이 변함. 
+                // 따라서 입력시 리렌더링을 '안' 해야 포커스가 유지됨.
+            }, 
+            
             selectProduct: (id) => {
                 const product = state.products.find(p => p.id === id);
                 if(product) setState(s => { s.selectedProductId = id; s.viewData = JSON.parse(JSON.stringify(product)); s.activeTab = 'info'; s.isNewProduct = false; });
@@ -287,19 +297,27 @@
                 }
             },
 
-            updateViewData: (field, value) => setState(s => s.viewData[field] = value),
+            // [핵심 수정] 입력 시에는 setState(렌더링)를 호출하지 않고 값만 변경합니다.
+            updateViewData: (field, value) => {
+                state.viewData[field] = value;
+            },
+            
             addOption: () => {
                 const newOpt = { id: `opt${Date.now()}`, name: '', price: 0, unit: '1인', desc: '' };
                 setState(s => { if (!s.viewData.pricingOptions) s.viewData.pricingOptions = []; s.viewData.pricingOptions.push(newOpt); });
             },
             removeOption: (idx) => setState(s => s.viewData.pricingOptions.splice(idx, 1)),
-            updateOption: (idx, field, value) => setState(s => s.viewData.pricingOptions[idx][field] = value),
+            
+            // [핵심 수정] 옵션 입력 시 렌더링 방지
+            updateOption: (idx, field, value) => {
+                state.viewData.pricingOptions[idx][field] = value;
+            },
 
-            // 규정(Policy) 관리
-            updatePolicy: (field, value) => setState(s => {
-                if (!s.viewData.policies) s.viewData.policies = {};
-                s.viewData.policies[field] = value;
-            }),
+            // [핵심 수정] 정책 입력 시 렌더링 방지
+            updatePolicy: (field, value) => {
+                if (!state.viewData.policies) state.viewData.policies = {};
+                state.viewData.policies[field] = value;
+            },
 
             // FAQ 관리
             addFaq: () => {
@@ -309,7 +327,11 @@
                 });
             },
             removeFaq: (idx) => setState(s => s.viewData.faq.splice(idx, 1)),
-            updateFaq: (idx, field, value) => setState(s => s.viewData.faq[idx][field] = value),
+            
+            // [핵심 수정] FAQ 입력 시 렌더링 방지
+            updateFaq: (idx, field, value) => {
+                state.viewData.faq[idx][field] = value;
+            },
         };
 
         // ==========================================
