@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>여행 상품 관리 페이지 (DB 연동됨)</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* 애니메이션 설정 */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .animate-spin-custom {
+            animation: spin 1s linear infinite;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        /* 스크롤바 숨김 (선택사항) */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 font-sans text-gray-800 relative min-h-screen">
+
+    <div id="app"></div>
+
+    <!-- Firebase 모듈 (ES Module) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, deleteDoc, doc, updateDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // 1. Firebase 설정 및 초기화
+        // ==========================================
+
+        // 시스템 환경 변수에서 설정을 가져옵니다.
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // 컬렉션 경로
+        const COLLECTION_NAME = 'travel_products';
+
+        // ==========================================
+        // 2. 초기 데이터 및 상태 관리
+        // ==========================================
+
+        const LOGO_IMAGE_URL = "https://cdn.monkeytravel.com/userCompany/1058603/logo/1067e5528b654db1c03737ce896c459c.png";
+        const ADMIN_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"; // "1234"
+
+        // 초기 샘플 데이터
+        const INITIAL_SAMPLE_DATA = [
+            {
+                productName: "푸꾸옥 프라이빗 렌트카 투어 (기사포함)",
+                category: "우리만 (Private)",
+                heroImage: "https://images.unsplash.com/photo-1586943101559-4cdcf86a6f87?auto=format&fit=crop&q=80&w=1000",
+                location: "베트남, 푸꾸옥 전역",
+                operatingHours: "09:00 - 21:00 (자유 일정)",
+                description: "우리끼리만 편안하게! 원하는 일정대로 자유롭게 이동하는 프라이빗 렌트카 서비스입니다. \n베테랑 현지 기사님이 안전하게 모십니다. (유류비, 기사님 식대 포함)",
+                pricingOptions: [
+                    { id: 'opt1', name: '승용차 (4인승)', price: 60000, unit: '1대', desc: '최대 성인 3명 + 짐 2개' },
+                    { id: 'opt2', name: 'SUV (7인승)', price: 75000, unit: '1대', desc: '최대 성인 5명 + 짐 3개' },
+                    { id: 'opt3', name: '승합차 (16인승)', price: 110000, unit: '1대', desc: '단체/가족 여행 추천' },
+                ],
+                policies: {
+                    cancellation: "이용일 2일 전까지 무료 취소 가능",
+                    refundInfo: "차량 배차 확정 후 당일 취소 시 100% 수수료가 발생합니다.",
+                    usageMethod: "상담을 통해 일정 확정 후, 카카오톡으로 기사님 정보를 보내드립니다.",
+                    inclusions: ["전용 차량", "현지 기사", "유류비", "주차비"],
+                },
+                details: { notes: ["기사님은 간단한 영어 소통만 가능합니다."] },
+                faq: [{ q: "기사님이 한국어를 하시나요?", a: "아니요, 현지 기사님이지만 번역기를 통해 소통에 문제 없습니다." }]
+            },
+            {
+                productName: "빈펄 사파리 & 빈원더스 콤보권",
+                category: "금까기 (Ticket)",
+                heroImage: "https://images.unsplash.com/photo-1575550959106-5a7defe28b56?auto=format&fit=crop&q=80&w=1000",
+                location: "베트남, 빈펄 랜드",
+                operatingHours: "09:00 - 19:30",
+                description: "아시아 최대 야생 사파리와 테마파크를 한 번에! \n하루 종일 즐기는 환상의 나라로 초대합니다. QR 코드로 바로 입장하세요.",
+                pricingOptions: [
+                    { id: 'tkt1', name: '성인 콤보권', price: 85000, unit: '1인', desc: '만 12세 이상' },
+                    { id: 'tkt2', name: '아동 콤보권', price: 62000, unit: '1인', desc: '만 4세~11세' },
+                ],
+                policies: {
+                    cancellation: "QR 발권 전 무료 취소",
+                    refundInfo: "사용 처리된 QR 코드는 환불 불가합니다.",
+                    usageMethod: "이메일로 발송된 E-티켓을 입구에서 제시하세요.",
+                    inclusions: ["사파리 입장권", "빈원더스 입장권"],
+                },
+                faq: [{ q: "셔틀버스는 무료인가요?", a: "네, 무료 셔틀을 운행합니다." }]
+            }
+        ];
+
+        const state = {
+            currentUser: null,
+            products: [],
+            loading: true,
+            isAdmin: false,
+            showAuthModal: false,
+            passwordInput: "",
+            loginError: false,
+            selectedProductId: null,
+            viewData: null,
+            activeTab: 'info',
+            deleteTargetId: null,
+            isNewProduct: false,
+            toast: { show: false, message: '', type: 'success' }
+        };
+
+        // ==========================================
+        // 3. 유틸리티 함수
+        // ==========================================
+
+        const formatCurrency = (amount) => new Intl.NumberFormat('ko-KR').format(amount);
+
+        async function checkPassword(input) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(input);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex === ADMIN_PASSWORD_HASH;
+        }
+
+        function showToast(message, type = 'success') {
+            state.toast = { show: true, message, type };
+            render();
+            setTimeout(() => {
+                state.toast.show = false;
+                render();
+            }, 3000);
+        }
+
+        function setState(callback) {
+            callback(state);
+            render();
+        }
+
+        // ==========================================
+        // 4. Firebase Actions
+        // ==========================================
+
+        // (1) 초기화 및 인증
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth Error:", error);
+                showToast("인증에 실패했습니다.", "error");
+                // [FIX] 인증 실패 시에도 로딩 해제하여 무한 로딩 방지
+                setState(s => s.loading = false);
+            }
+        };
+
+        // (2) 데이터 구독 (Realtime Listener)
+        const subscribeToProducts = () => {
+            onAuthStateChanged(auth, (user) => {
+                state.currentUser = user;
+
+                // [FIX] 유저가 없거나 로그아웃 된 경우 로딩 해제
+                if (!user) {
+                    console.log("No user detected");
+                    setState(s => s.loading = false);
+                    return;
+                }
+
+                // 데이터 구독 시작
+                const q = collection(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME);
+
+                onSnapshot(q, (snapshot) => {
+                    const items = [];
+                    snapshot.forEach((doc) => {
+                        items.push({ id: doc.id, ...doc.data() });
+                    });
+                    items.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+                    // 데이터가 이전과 동일하면 렌더링 건너뛰기 (깜빡임 방지)
+                    if (JSON.stringify(state.products) === JSON.stringify(items)) return;
+
+                    // 관리자가 수정/작성 중일 때는 백그라운드 업데이트로 인한 리렌더링 차단
+                    if (state.isAdmin && state.selectedProductId) {
+                        state.products = items;
+                        const currentExists = items.find(p => p.id === state.selectedProductId);
+                        if (!currentExists && !state.isNewProduct) {
+                            setState(s => {
+                                s.selectedProductId = null;
+                                s.viewData = null;
+                            });
+                            showToast("보고 계신 상품이 삭제되었습니다.", "error");
+                        }
+                        return;
+                    }
+
+                    setState(s => {
+                        s.products = items;
+                        s.loading = false;
+
+                        if (s.selectedProductId) {
+                            const updated = items.find(p => p.id === s.selectedProductId);
+                            if (updated) {
+                                if (!s.isAdmin || (s.isAdmin && s.viewData.id !== s.selectedProductId)) {
+                                    s.viewData = JSON.parse(JSON.stringify(updated));
+                                }
+                            } else {
+                                s.selectedProductId = null;
+                                s.viewData = null;
+                                showToast("상품이 삭제되었습니다.", "error");
+                            }
+                        }
+                    });
+                }, (error) => {
+                    console.error("Firestore Error:", error);
+                    showToast("데이터 로딩 실패", "error");
+                    setState(s => s.loading = false);
+                });
+            });
+        };
+
+        // [FIX] 안전장치: 7초 이상 로딩 시 강제 종료
+        setTimeout(() => {
+            if (state.loading) {
+                console.warn("Loading timeout triggered");
+                setState(s => s.loading = false);
+                showToast("네트워크 연결이 지연되고 있습니다.", "error");
+            }
+        }, 7000);
+
+        // (3) CRUD Actions
+        window.actions = {
+            toggleAuthModal: (show) => setState(s => s.showAuthModal = show),
+            toggleAdminMode: () => {
+                if (state.isAdmin) setState(s => s.isAdmin = false);
+                else setState(s => s.showAuthModal = true);
+            },
+            handleAdminLogin: async (e) => {
+                e.preventDefault();
+                const isValid = await checkPassword(state.passwordInput);
+                if (isValid) {
+                    setState(s => {
+                        s.isAdmin = true;
+                        s.showAuthModal = false;
+                        s.passwordInput = "";
+                        s.loginError = false;
+                    });
+                    showToast("관리자 모드로 전환되었습니다.");
+                } else {
+                    setState(s => s.loginError = true);
+                }
+            },
+            updatePasswordInput: (val) => { state.passwordInput = val; },
+            selectProduct: (id) => {
+                const product = state.products.find(p => p.id === id);
+                setState(s => {
+                    s.selectedProductId = id;
+                    s.viewData = JSON.parse(JSON.stringify(product));
+                    s.activeTab = 'info';
+                    s.isNewProduct = false;
+                });
+            },
+            backToList: () => setState(s => {
+                s.selectedProductId = null;
+                s.viewData = null;
+                s.isNewProduct = false;
+            }),
+            setTab: (tab) => setState(s => s.activeTab = tab),
+
+            addProduct: () => {
+                if (!state.currentUser) return;
+                const newProduct = {
+                    productName: "",
+                    heroImage: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000",
+                    category: "신규",
+                    location: "",
+                    operatingHours: "09:00 - 18:00",
+                    description: "",
+                    pricingOptions: [],
+                    policies: {},
+                    faq: []
+                };
+                setState(s => {
+                    s.viewData = newProduct;
+                    s.selectedProductId = 'temp_new_id';
+                    s.isNewProduct = true;
+                    s.activeTab = 'info';
+                });
+            },
+
+            initiateDelete: (e, id) => {
+                e.stopPropagation();
+                setState(s => s.deleteTargetId = id);
+            },
+            cancelDelete: () => setState(s => s.deleteTargetId = null),
+            executeDelete: async () => {
+                if (!state.deleteTargetId || !state.currentUser) return;
+                try {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, state.deleteTargetId);
+                    await deleteDoc(docRef);
+                    setState(s => s.deleteTargetId = null);
+                    showToast("상품이 삭제되었습니다.");
+                } catch (err) {
+                    console.error(err);
+                    showToast("삭제 실패: " + err.message, "error");
+                }
+            },
+
+            saveProduct: async () => {
+                if (!state.viewData || !state.currentUser) return;
+                try {
+                    if (state.isNewProduct) {
+                        const colRef = collection(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME);
+                        const newDocData = {
+                            ...state.viewData,
+                            createdAt: serverTimestamp(),
+                            updatedAt: serverTimestamp()
+                        };
+                        await addDoc(colRef, newDocData);
+                        showToast("새 상품이 등록되었습니다.");
+                    } else {
+                        if (!state.viewData.id) return;
+                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME, state.viewData.id);
+                        const { id, ...updateData } = state.viewData;
+                        updateData.updatedAt = serverTimestamp();
+                        await updateDoc(docRef, updateData);
+                        showToast("성공적으로 저장되었습니다.");
+                    }
+                    actions.backToList();
+                } catch (err) {
+                    console.error(err);
+                    showToast("저장 실패: " + err.message, "error");
+                }
+            },
+
+            initializeSampleData: async () => {
+                if (!confirm("현재 목록에 샘플 데이터가 추가됩니다. 진행하시겠습니까?")) return;
+                try {
+                    const colRef = collection(db, 'artifacts', appId, 'public', 'data', COLLECTION_NAME);
+                    for (const item of INITIAL_SAMPLE_DATA) {
+                        await addDoc(colRef, {
+                            ...item,
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    showToast("샘플 데이터가 추가되었습니다.");
+                } catch (err) {
+                    showToast("초기화 실패: " + err.message, "error");
+                }
+            },
+
+            updateViewData: (field, value) => setState(s => s.viewData[field] = value),
+            addOption: () => {
+                const newOpt = { id: `opt${Date.now()}`, name: '', price: 0, unit: '1인', desc: '' };
+                setState(s => {
+                    if (!s.viewData.pricingOptions) s.viewData.pricingOptions = [];
+                    s.viewData.pricingOptions.push(newOpt);
+                });
+            },
+            removeOption: (idx) => setState(s => s.viewData.pricingOptions.splice(idx, 1)),
+            updateOption: (idx, field, value) => setState(s => s.viewData.pricingOptions[idx][field] = value),
+        };
+
+        // ==========================================
+        // 5. 렌더링 함수
+        // ==========================================
+
+        function render() {
+            const app = document.getElementById('app');
+
+            let toastHtml = '';
+            if (state.toast.show) {
+                const bgColor = state.toast.type === 'error' ? 'bg-red-500' : 'bg-gray-800';
+                const icon = state.toast.type === 'error' ? 'alert-triangle' : 'check-circle';
+                toastHtml = `
+                    <div class="fixed top-20 left-1/2 transform -translate-x-1/2 z-[110] px-6 py-3 rounded-full shadow-lg text-white text-sm font-bold animate-fade-in flex items-center gap-2 ${bgColor}">
+                        <i data-lucide="${icon}" width="16"></i>
+                        ${state.toast.message}
+                    </div>
+                `;
+            }
+
+            let deleteModalHtml = '';
+            if (state.deleteTargetId) {
+                deleteModalHtml = `
+                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[120] px-4 backdrop-blur-sm animate-fade-in">
+                        <div class="bg-white rounded-xl p-6 w-full max-w-xs shadow-2xl text-center">
+                            <div class="bg-red-100 p-3 rounded-full inline-block mb-3">
+                                <i data-lucide="trash-2" class="text-red-600" width="24"></i>
+                            </div>
+                            <h3 class="font-bold text-lg text-gray-800 mb-1">정말 삭제하시겠습니까?</h3>
+                            <p class="text-xs text-gray-500 mb-5">삭제된 데이터는 복구할 수 없습니다.</p>
+                            <div class="flex gap-2">
+                                <button onclick="actions.cancelDelete()" class="flex-1 py-3 bg-gray-200 rounded-lg font-bold text-gray-600 text-sm hover:bg-gray-300">취소</button>
+                                <button onclick="actions.executeDelete()" class="flex-1 py-3 bg-red-600 text-white rounded-lg font-bold text-sm hover:bg-red-700">삭제</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let authModalHtml = '';
+            if (state.showAuthModal) {
+                authModalHtml = `
+                    <div class="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] px-4 backdrop-blur-sm animate-fade-in">
+                        <div class="bg-white rounded-xl p-6 w-full max-w-xs shadow-2xl">
+                            <div class="text-center mb-4">
+                                <div class="bg-emerald-100 p-3 rounded-full inline-block mb-2">
+                                    <i data-lucide="lock" class="text-emerald-600" width="24"></i>
+                                </div>
+                                <h3 class="font-bold text-lg">관리자 접근</h3>
+                                <p class="text-xs text-gray-500">비밀번호(1234)를 입력하세요.</p>
+                            </div>
+                            <form onsubmit="actions.handleAdminLogin(event)">
+                                <input type="password" value="${state.passwordInput}" 
+                                    oninput="actions.updatePasswordInput(this.value)"
+                                    class="w-full p-3 border border-gray-300 rounded-lg mb-3 text-center text-lg focus:border-emerald-500 outline-none"
+                                    placeholder="Password" autofocus />
+                                ${state.loginError ? '<p class="text-red-500 text-xs text-center mb-3 font-bold">비밀번호가 올바르지 않습니다.</p>' : ''}
+                                <div class="flex gap-2">
+                                    <button type="button" onclick="actions.toggleAuthModal(false)" class="flex-1 py-3 bg-gray-200 rounded-lg font-bold text-gray-600 text-sm">취소</button>
+                                    <button type="submit" class="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-bold text-sm">확인</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const navbarHtml = `
+                <nav class="bg-white shadow-sm sticky top-0 z-50">
+                    <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+                        <div class="flex items-center gap-2 cursor-pointer" onclick="actions.backToList()">
+                            ${state.selectedProductId ? '<i data-lucide="chevron-left" class="text-gray-600" width="20"></i>' : ''}
+                            <img src="${LOGO_IMAGE_URL}" alt="Logo" class="h-8 max-h-full object-contain" />
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs ${!state.isAdmin ? 'font-bold text-gray-900' : 'text-gray-400'}">고객용</span>
+                            <button onclick="actions.toggleAdminMode()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${state.isAdmin ? 'bg-emerald-600' : 'bg-gray-300'}">
+                                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${state.isAdmin ? 'translate-x-6' : 'translate-x-1'}"></span>
+                            </button>
+                            <span class="text-xs ${state.isAdmin ? 'font-bold text-gray-900' : 'text-gray-400'}">관리자</span>
+                        </div>
+                    </div>
+                </nav>
+            `;
+
+            let contentHtml = '';
+
+            if (state.loading) {
+                contentHtml = `
+                    <div class="min-h-[80vh] flex flex-col items-center justify-center text-gray-400 gap-3">
+                        <i data-lucide="loader-2" class="animate-spin-custom text-emerald-600" width="32"></i>
+                        <span class="text-sm">데이터를 불러오는 중...</span>
+                    </div>
+                `;
+            }
+            else if (!state.selectedProductId) {
+                let productItems = '';
+                if (state.products.length === 0) {
+                    productItems = `
+                        <div class="py-20 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl col-span-full flex flex-col items-center gap-2">
+                            <span>등록된 상품이 없습니다.</span>
+                            ${state.isAdmin ? `
+                                <button onclick="actions.initializeSampleData()" class="text-emerald-600 font-bold text-sm hover:underline">
+                                    + 샘플 데이터 초기화하기
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    productItems = state.products.map(p => `
+                        <div onclick="actions.selectProduct('${p.id}')" class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all cursor-pointer relative">
+                            <div class="relative h-40 bg-gray-200 overflow-hidden">
+                                <img src="${p.heroImage}" alt="${p.productName}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onerror="this.src='https://via.placeholder.com/400x300'"/>
+                                <div class="absolute top-2 left-2 bg-black/50 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded">${p.category || '기본 상품'}</div>
+                                ${state.isAdmin ? `
+                                    <button onclick="actions.initiateDelete(event, '${p.id}')" class="absolute top-2 right-2 bg-white/90 p-1.5 rounded-full text-red-500 hover:bg-red-50 hover:text-red-600 shadow-sm z-10">
+                                        <i data-lucide="trash-2" width="14"></i>
+                                    </button>
+                                ` : ''}
+                            </div>
+                            <div class="p-4">
+                                <h3 class="font-bold text-gray-800 line-clamp-1 mb-1">${p.productName}</h3>
+                                <p class="text-xs text-gray-500 mb-3 flex items-center gap-1"><i data-lucide="map-pin" width="12"></i> ${p.location}</p>
+                                <div class="flex justify-between items-center border-t border-gray-100 pt-3">
+                                    <span class="text-xs text-gray-400">옵션 ${p.pricingOptions?.length || 0}개</span>
+                                    <div class="text-emerald-600 font-bold text-sm">안내 보기 →</div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+
+                contentHtml = `
+                    <div class="p-4 animate-fade-in">
+                        <div class="relative mb-6">
+                            <input type="text" placeholder="상품명 또는 지역 검색..." class="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                            <i data-lucide="search" class="absolute left-3 top-3.5 text-gray-400" width="18"></i>
+                        </div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">
+                                ${state.isAdmin ? '상품 관리 (DB 연동)' : '추천 상품 목록'}
+                                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Live Data"></div>
+                            </h2>
+                            ${state.isAdmin ? `
+                                <button onclick="actions.addProduct()" class="bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-sm">
+                                    <i data-lucide="plus" width="14"></i> 상품 추가
+                                </button>
+                            ` : ''}
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${productItems}
+                        </div>
+                    </div>
+                `;
+            }
+            else if (state.viewData) {
+                const vd = state.viewData;
+
+                if (!state.isAdmin) {
+                    const priceOptions = (vd.pricingOptions || []).map(opt => `
+                        <div class="p-4 flex justify-between items-center hover:bg-gray-50 transition-colors">
+                            <div class="pr-4">
+                                <div class="font-bold text-gray-800 text-base">${opt.name}</div>
+                                ${opt.desc ? `<div class="text-xs text-gray-500 mt-1">${opt.desc}</div>` : ''}
+                            </div>
+                            <div class="text-right shrink-0">
+                                <div class="font-bold text-emerald-600 text-lg">${formatCurrency(opt.price)}원</div>
+                                <div class="text-xs text-gray-400 font-medium">${opt.unit}</div>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    let tabContent = '';
+                    if (state.activeTab === 'info') {
+                        tabContent = `<p class="text-gray-600 text-sm whitespace-pre-line leading-relaxed">${vd.description}</p>`;
+                    } else if (state.activeTab === 'policy') {
+                        const inclusions = (vd.policies?.inclusions || []).map(i => `<li>${i}</li>`).join('');
+                        tabContent = `
+                            <div class="space-y-4">
+                                <div class="bg-amber-50 border border-amber-100 p-4 rounded-lg text-sm">
+                                    <h4 class="font-bold text-amber-700 mb-1">취소/환불 규정</h4>
+                                    <p>${vd.policies?.cancellation || '-'}</p>
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    <h4 class="font-bold text-gray-800 mb-1">포함 사항</h4>
+                                    <ul class="list-disc pl-4 space-y-1">${inclusions}</ul>
+                                </div>
+                            </div>
+                        `;
+                    } else if (state.activeTab === 'faq') {
+                        tabContent = (vd.faq || []).map(f => `
+                            <div class="bg-gray-50 p-4 rounded-lg text-sm border border-gray-100 mb-3">
+                                <div class="font-bold text-emerald-800 mb-2 flex items-start gap-2">
+                                    <span class="bg-emerald-100 text-emerald-700 px-1.5 rounded text-xs">Q</span> ${f.q}
+                                </div>
+                                <div class="text-gray-600 pl-6">A. ${f.a}</div>
+                            </div>
+                        `).join('');
+                    }
+
+                    contentHtml = `
+                        <div class="animate-fade-in">
+                            <div class="relative h-64 md:h-80 bg-gray-200">
+                                <img src="${vd.heroImage}" alt="Product" class="w-full h-full object-cover" />
+                                <button onclick="actions.backToList()" class="absolute top-4 left-4 bg-white/30 backdrop-blur-md p-2 rounded-full text-white hover:bg-white/50 transition">
+                                    <i data-lucide="chevron-left" width="24"></i>
+                                </button>
+                                <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-5 pt-20 text-white">
+                                    <div class="flex items-center gap-1 text-sm mb-2 text-emerald-300 font-medium">
+                                        <i data-lucide="map-pin" width="14"></i> ${vd.location}
+                                    </div>
+                                    <h2 class="text-2xl md:text-3xl font-bold leading-tight mb-1">${vd.productName}</h2>
+                                </div>
+                            </div>
+
+                            <div class="bg-white px-5 py-4 flex justify-between items-center border-b border-gray-100 text-sm shadow-sm">
+                                <div class="flex items-center gap-2 text-gray-600">
+                                    <i data-lucide="clock" class="text-emerald-600" width="16"></i> ${vd.operatingHours}
+                                </div>
+                                <div class="flex items-center gap-1 text-emerald-600 font-bold bg-emerald-50 px-2 py-1 rounded-md text-xs">
+                                    <i data-lucide="info" width="12"></i> 상세 안내
+                                </div>
+                            </div>
+
+                            <div class="m-5">
+                                <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                    <i data-lucide="menu" class="text-emerald-600" width="18"></i> 상품 요금표
+                                </h3>
+                                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                    <div class="bg-gray-50 px-4 py-2 border-b border-gray-200 text-xs text-gray-500 flex justify-between">
+                                        <span>옵션명 / 상세내용</span>
+                                        <span>가격</span>
+                                    </div>
+                                    <div class="divide-y divide-gray-100">
+                                        ${priceOptions}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white mt-2 border-t border-gray-200 pb-10">
+                                <div class="flex border-b border-gray-200 sticky top-14 bg-white z-40">
+                                    <button onclick="actions.setTab('info')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'info' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">상세 정보</button>
+                                    <button onclick="actions.setTab('policy')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'policy' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">규정</button>
+                                    <button onclick="actions.setTab('faq')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'faq' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">FAQ</button>
+                                </div>
+                                <div class="p-5 min-h-[300px]">
+                                    ${tabContent}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const optionsEdit = (vd.pricingOptions || []).map((opt, idx) => `
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2">
+                            <button onclick="actions.removeOption(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500">
+                                <i data-lucide="trash-2" width="14"></i>
+                            </button>
+                            <div class="grid grid-cols-2 gap-2 mb-2 pr-6">
+                                <input placeholder="옵션명" class="p-1 border rounded text-sm" value="${opt.name}" oninput="actions.updateOption(${idx}, 'name', this.value)">
+                                <input placeholder="가격" type="number" class="p-1 border rounded text-sm text-right" value="${opt.price}" oninput="actions.updateOption(${idx}, 'price', this.value)">
+                            </div>
+                            <div class="flex gap-2">
+                                <input placeholder="단위" class="w-1/4 p-1 border rounded text-xs text-center" value="${opt.unit}" oninput="actions.updateOption(${idx}, 'unit', this.value)">
+                                <input placeholder="상세 설명" class="w-3/4 p-1 border rounded text-xs" value="${opt.desc}" oninput="actions.updateOption(${idx}, 'desc', this.value)">
+                            </div>
+                        </div>
+                    `).join('');
+
+                    contentHtml = `
+                        <div class="bg-white min-h-screen p-6 animate-fade-in">
+                            <div class="mb-6 pb-4 border-b border-gray-200 flex justify-between items-center sticky top-14 bg-white z-40 pt-2">
+                                <h2 class="text-xl font-bold flex items-center gap-2 text-gray-800">
+                                    <i data-lucide="settings" class="text-emerald-600"></i> 상품 수정
+                                </h2>
+                                <div class="flex gap-2">
+                                    <button onclick="actions.backToList()" class="px-3 py-2 bg-gray-200 rounded text-xs font-bold text-gray-600">취소</button>
+                                    <button onclick="actions.saveProduct()" class="px-4 py-2 bg-emerald-600 text-white rounded text-xs font-bold hover:bg-emerald-700">저장</button>
+                                </div>
+                            </div>
+
+                            <form class="space-y-6" onsubmit="event.preventDefault()">
+                                <section class="space-y-3">
+                                    <label class="block text-xs font-bold text-gray-500">상품명</label>
+                                    <input type="text" value="${vd.productName}" oninput="actions.updateViewData('productName', this.value)" class="w-full p-2 border border-gray-300 rounded font-bold text-sm" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">카테고리</label>
+                                    <input type="text" value="${vd.category || ''}" oninput="actions.updateViewData('category', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">이미지 URL</label>
+                                    <input type="text" value="${vd.heroImage}" oninput="actions.updateViewData('heroImage', this.value)" class="w-full p-2 border border-gray-300 rounded text-xs font-mono text-gray-500" />
+                                    
+                                    <label class="block text-xs font-bold text-gray-500">설명</label>
+                                    <textarea rows="4" oninput="actions.updateViewData('description', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm">${vd.description}</textarea>
+                                </section>
+
+                                <section class="space-y-3 border-t pt-4">
+                                    <div class="flex justify-between items-center">
+                                        <h3 class="font-bold text-sm text-gray-800">요금 옵션 관리</h3>
+                                        <button onclick="actions.addOption()" class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold flex items-center gap-1">
+                                            <i data-lucide="plus" width="12"></i> 추가
+                                        </button>
+                                    </div>
+                                    <div>${optionsEdit}</div>
+                                </section>
+                                <div class="h-12"></div>
+                            </form>
+                        </div>
+                    `;
+                }
+            }
+
+            app.innerHTML = `
+                ${toastHtml}
+                ${deleteModalHtml}
+                ${authModalHtml}
+                ${navbarHtml}
+                <div class="max-w-3xl mx-auto pb-12">
+                    ${contentHtml}
+                </div>
+            `;
+
+            lucide.createIcons();
+        }
+
+        initAuth();
+        subscribeToProducts();
+        render();
+
+    </script>
+</body>
+
+</html>
