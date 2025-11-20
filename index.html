@@ -75,7 +75,6 @@
                     cancellation: "이용일 2일 전까지 무료 취소 가능",
                     refundInfo: "차량 배차 확정 후 당일 취소 시 100% 수수료가 발생합니다.",
                     usageMethod: "상담을 통해 일정 확정 후, 카카오톡으로 기사님 정보를 보내드립니다.",
-                    // inclusions 제거됨
                 },
                 details: { notes: ["기사님은 간단한 영어 소통만 가능합니다."] },
                 faq: [{ q: "기사님이 한국어를 하시나요?", a: "아니요, 현지 기사님이지만 번역기를 통해 소통에 문제 없습니다." }]
@@ -94,7 +93,6 @@
                     cancellation: "QR 발권 전 무료 취소",
                     refundInfo: "사용 처리된 QR 코드는 환불 불가합니다.",
                     usageMethod: "이메일로 발송된 E-티켓을 입구에서 제시하세요.",
-                    // inclusions 제거됨
                 },
                 faq: [{ q: "셔틀버스는 무료인가요?", a: "네, 무료 셔틀을 운행합니다." }]
             }
@@ -215,15 +213,8 @@
                     showToast("로그인 오류", "error");
                 }
             },
-            // [수정] 비밀번호 입력 시에는 화면 갱신 필요 (에러 메시지 초기화 등 UI 반응 필요할 수 있음)
-            // 단, 여기서는 렌더링을 최소화하기 위해 필요한 경우에만 setState 호출 권장하나, 
-            // 로그인 창은 입력 빈도가 낮으므로 기존 유지해도 무방. 하지만 끊김 방지를 위해 state 직접 수정으로 변경.
             updatePasswordInput: (val) => { 
                 state.passwordInput = val; 
-                // 비밀번호 입력창은 별도 모달이므로 리렌더링 안 해도 입력 자체는 됨 (value 바인딩 구조상)
-                // 하지만 리액트가 아니므로 value={state...}가 갱신되려면 리렌더링 필요함.
-                // 바닐라 JS 구조상 input의 'value' 속성은 초기값이고, 입력시 DOM이 변함. 
-                // 따라서 입력시 리렌더링을 '안' 해야 포커스가 유지됨.
             }, 
             
             selectProduct: (id) => {
@@ -241,7 +232,7 @@
                     operatingHours: "09:00 - 18:00",
                     description: "",
                     pricingOptions: [],
-                    policies: { cancellation: "" }, // inclusions 제거됨
+                    policies: { cancellation: "" },
                     faq: []
                 };
                 setState(s => { s.viewData = newProduct; s.selectedProductId = 'temp_new_id'; s.isNewProduct = true; s.activeTab = 'info'; });
@@ -297,7 +288,7 @@
                 }
             },
 
-            // [핵심 수정] 입력 시에는 setState(렌더링)를 호출하지 않고 값만 변경합니다.
+            // [핵심] 입력 시 렌더링 방지
             updateViewData: (field, value) => {
                 state.viewData[field] = value;
             },
@@ -308,18 +299,15 @@
             },
             removeOption: (idx) => setState(s => s.viewData.pricingOptions.splice(idx, 1)),
             
-            // [핵심 수정] 옵션 입력 시 렌더링 방지
             updateOption: (idx, field, value) => {
                 state.viewData.pricingOptions[idx][field] = value;
             },
 
-            // [핵심 수정] 정책 입력 시 렌더링 방지
             updatePolicy: (field, value) => {
                 if (!state.viewData.policies) state.viewData.policies = {};
                 state.viewData.policies[field] = value;
             },
 
-            // FAQ 관리
             addFaq: () => {
                 setState(s => {
                     if (!s.viewData.faq) s.viewData.faq = [];
@@ -328,7 +316,6 @@
             },
             removeFaq: (idx) => setState(s => s.viewData.faq.splice(idx, 1)),
             
-            // [핵심 수정] FAQ 입력 시 렌더링 방지
             updateFaq: (idx, field, value) => {
                 state.viewData.faq[idx][field] = value;
             },
@@ -430,8 +417,11 @@
                 if (!state.isAdmin) {
                     const priceOptions = (vd.pricingOptions || []).map(opt => `<div class="p-4 flex justify-between items-center hover:bg-gray-50 transition-colors"><div class="pr-4"><div class="font-bold text-gray-800 text-base">${opt.name}</div>${opt.desc ? `<div class="text-xs text-gray-500 mt-1">${opt.desc}</div>` : ''}</div><div class="text-right shrink-0"><div class="font-bold text-emerald-600 text-lg">${formatCurrency(opt.price)}원</div><div class="text-xs text-gray-400 font-medium">${opt.unit}</div></div></div>`).join('');
                     
-                    // [변경] 포함사항 렌더링 제거
-                    let tabContent = state.activeTab === 'info' ? `<p class="text-gray-600 text-sm whitespace-pre-line leading-relaxed">${vd.description}</p>` : (state.activeTab === 'policy' ? `<div class="space-y-4"><div class="bg-amber-50 border border-amber-100 p-4 rounded-lg text-sm"><h4 class="font-bold text-amber-700 mb-1">취소 규정</h4><p class="whitespace-pre-line">${vd.policies?.cancellation || '-'}</p></div></div>` : (vd.faq || []).map(f => `<div class="bg-gray-50 p-4 rounded-lg text-sm border border-gray-100 mb-3"><div class="font-bold text-emerald-800 mb-2">Q. ${f.q}</div><div class="text-gray-600 pl-4">A. ${f.a}</div></div>`).join(''));
+                    let tabContent = state.activeTab === 'info' ? 
+                        `<p class="text-gray-600 text-sm whitespace-pre-line leading-relaxed">${vd.description}</p>` : 
+                        (state.activeTab === 'policy' ? 
+                            `<div class="space-y-4"><div class="bg-amber-50 border border-amber-100 p-4 rounded-lg text-sm"><p class="whitespace-pre-line">${vd.policies?.cancellation || '-'}</p></div></div>` : 
+                            (vd.faq || []).map(f => `<div class="bg-gray-50 p-4 rounded-lg text-sm border border-gray-100 mb-3"><div class="font-bold text-emerald-800 mb-2">Q. ${f.q}</div><div class="text-gray-600 pl-4">A. ${f.a}</div></div>`).join(''));
 
                     contentHtml = `
                         <div class="animate-fade-in">
@@ -446,14 +436,27 @@
                             <div class="bg-white mt-2 border-t border-gray-200 pb-10">
                                 <div class="flex border-b border-gray-200 sticky top-14 bg-white z-40">
                                     <button onclick="actions.setTab('info')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'info' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">상세 정보</button>
-                                    <button onclick="actions.setTab('policy')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'policy' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">규정</button>
+                                    <button onclick="actions.setTab('policy')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'policy' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">기타사항</button>
                                     <button onclick="actions.setTab('faq')" class="flex-1 py-3 text-sm font-medium border-b-2 ${state.activeTab === 'faq' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500'}">FAQ</button>
                                 </div>
                                 <div class="p-5 min-h-[300px]">${tabContent}</div>
                             </div>
                         </div>`;
                 } else {
-                    const optionsEdit = (vd.pricingOptions || []).map((opt, idx) => `<div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2"><button onclick="actions.removeOption(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" width="14"></i></button><div class="grid grid-cols-2 gap-2 mb-2 pr-6"><input placeholder="옵션명" class="p-1 border rounded text-sm" value="${opt.name}" oninput="actions.updateOption(${idx}, 'name', this.value)"><input placeholder="가격" type="number" class="p-1 border rounded text-sm text-right" value="${opt.price}" oninput="actions.updateOption(${idx}, 'price', this.value)"></div><div class="flex gap-2"><input placeholder="단위" class="w-1/4 p-1 border rounded text-xs text-center" value="${opt.unit}" oninput="actions.updateOption(${idx}, 'unit', this.value)"><input placeholder="설명" class="w-3/4 p-1 border rounded text-xs" value="${opt.desc}" oninput="actions.updateOption(${idx}, 'desc', this.value)"></div></div>`).join('');
+                    // [수정] 템플릿 리터럴의 백틱(`)이 명확하게 포함되도록 수정함
+                    const optionsEdit = (vd.pricingOptions || []).map((opt, idx) => `
+                        <div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2">
+                            <button onclick="actions.removeOption(${idx})" class="absolute top-2 right-2 text-gray-400 hover:text-red-500"><i data-lucide="trash-2" width="14"></i></button>
+                            <div class="grid grid-cols-2 gap-2 mb-2 pr-6">
+                                <input placeholder="옵션명" class="p-1 border rounded text-sm" value="${opt.name}" oninput="actions.updateOption(${idx}, 'name', this.value)">
+                                <input placeholder="가격" type="number" class="p-1 border rounded text-sm text-right" value="${opt.price}" oninput="actions.updateOption(${idx}, 'price', this.value)">
+                            </div>
+                            <div class="flex gap-2">
+                                <input placeholder="단위" class="w-1/4 p-1 border rounded text-xs text-center" value="${opt.unit}" oninput="actions.updateOption(${idx}, 'unit', this.value)">
+                                <input placeholder="설명" class="w-3/4 p-1 border rounded text-xs" value="${opt.desc}" oninput="actions.updateOption(${idx}, 'desc', this.value)">
+                            </div>
+                        </div>
+                    `).join('');
                     
                     const faqEdit = (vd.faq || []).map((f, idx) => `
                         <div class="bg-gray-50 p-3 rounded border border-gray-200 relative mb-2">
@@ -491,12 +494,10 @@
                                 </section>
 
                                 <section class="space-y-3 border-t pt-4">
-                                    <h3 class="font-bold text-sm text-gray-800">규정 및 정책</h3>
+                                    <h3 class="font-bold text-sm text-gray-800">기타사항</h3>
                                     <div>
-                                        <label class="block text-xs font-bold text-gray-500 mb-1">취소/환불 규정</label>
-                                        <textarea rows="3" oninput="actions.updatePolicy('cancellation', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm">${vd.policies?.cancellation || ''}</textarea>
+                                        <textarea rows="3" oninput="actions.updatePolicy('cancellation', this.value)" class="w-full p-2 border border-gray-300 rounded text-sm" placeholder="기타 안내 사항을 입력하세요">${vd.policies?.cancellation || ''}</textarea>
                                     </div>
-                                    <!-- [변경] 포함 사항 입력란 제거됨 -->
                                 </section>
 
                                 <section class="space-y-3 border-t pt-4">
