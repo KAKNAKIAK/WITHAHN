@@ -56,14 +56,13 @@
 
         const LOGO_IMAGE_URL = "https://cdn.monkeytravel.com/userCompany/1058603/logo/1067e5528b654db1c03737ce896c459c.png";
         
-        // 비밀번호 "1233"을 Base64로 인코딩한 값
         const ADMIN_PASSWORD_ENCODED = "MTIzMw=="; 
 
         const INITIAL_SAMPLE_DATA = [
             {
                 productName: "푸꾸옥 프라이빗 렌트카 투어 (기사포함)",
                 category: "우리만 (Private)",
-                priority: 100, // [추가] 우선순위 (높을수록 상단)
+                priority: 100, 
                 heroImage: "https://images.unsplash.com/photo-1586943101559-4cdcf86a6f87?auto=format&fit=crop&q=80&w=1000",
                 operatingHours: "09:00 - 21:00 (자유 일정)",
                 description: "우리끼리만 편안하게! 원하는 일정대로 자유롭게 이동하는 프라이빗 렌트카 서비스입니다. \n베테랑 현지 기사님이 안전하게 모십니다. (유류비, 기사님 식대 포함)",
@@ -113,7 +112,12 @@
             activeTab: 'info',
             deleteTargetId: null,
             isNewProduct: false,
-            toast: { show: false, message: '', type: 'success' }
+            toast: { show: false, message: '', type: 'success' },
+            initialLoadDone: false,
+            // [추가] 검색 및 필터 상태
+            searchQuery: "",
+            selectedCategory: "전체",
+            sortMode: "recommend" // 'recommend' (추천순) | 'price_asc' (최저가순)
         };
 
         const formatCurrency = (amount) => new Intl.NumberFormat('ko-KR').format(amount);
@@ -131,9 +135,45 @@
 
         function setState(callback) { callback(state); render(); }
 
+        // [추가] 최저가 계산 유틸리티
+        function getMinPrice(product) {
+            if (!product.pricingOptions || !Array.isArray(product.pricingOptions)) return Infinity;
+            // 0보다 큰 가격만 필터링
+            const validPrices = product.pricingOptions
+                .map(opt => Number(opt.price))
+                .filter(price => price > 0);
+            
+            if (validPrices.length === 0) return Infinity;
+            return Math.min(...validPrices);
+        }
+
         // ==========================================
-        // 3. Firebase Logic
+        // 3. Firebase Logic & Routing
         // ==========================================
+
+        window.addEventListener('popstate', (event) => {
+            const hash = window.location.hash;
+            if (hash.startsWith('#product=')) {
+                const id = hash.replace('#product=', '');
+                const product = state.products.find(p => p.id === id);
+                if (product) {
+                    setState(s => {
+                        s.selectedProductId = id;
+                        s.viewData = JSON.parse(JSON.stringify(product));
+                        s.activeTab = 'info';
+                        s.isNewProduct = false;
+                    });
+                }
+            } else if (hash === '#new') {
+                 setState(s => { s.selectedProductId = null; s.viewData = null; s.isNewProduct = false; });
+            } else {
+                setState(s => {
+                    s.selectedProductId = null;
+                    s.viewData = null;
+                    s.isNewProduct = false;
+                });
+            }
+        });
 
         const initAuth = async () => {
             try {
@@ -158,7 +198,6 @@
                         const items = [];
                         snapshot.forEach((doc) => items.push({ id: doc.id, ...doc.data() }));
                         
-                        // [수정] 정렬 로직: 우선순위(내림차순) -> 생성일(내림차순)
                         items.sort((a, b) => {
                             const priorityDiff = (b.priority || 0) - (a.priority || 0);
                             if (priorityDiff !== 0) return priorityDiff;
@@ -168,6 +207,16 @@
                         setState(s => {
                             s.products = items;
                             s.loading = false;
+                            
+                            if (!s.initialLoadDone && window.location.hash.startsWith('#product=')) {
+                                const id = window.location.hash.replace('#product=', '');
+                                const p = items.find(x => x.id === id);
+                                if (p) {
+                                    s.selectedProductId = id;
+                                    s.viewData = JSON.parse(JSON.stringify(p));
+                                }
+                            }
+                            s.initialLoadDone = true;
                             
                             if (s.selectedProductId) {
                                 const updated = items.find(p => p.id === s.selectedProductId);
@@ -227,23 +276,53 @@
             
             selectProduct: (id) => {
                 const product = state.products.find(p => p.id === id);
-                if(product) setState(s => { s.selectedProductId = id; s.viewData = JSON.parse(JSON.stringify(product)); s.activeTab = 'info'; s.isNewProduct = false; });
+                if(product) {
+                    history.pushState({ productId: id }, '', `#product=${id}`);
+                    setState(s => { 
+                        s.selectedProductId = id; 
+                        s.viewData = JSON.parse(JSON.stringify(product)); 
+                        s.activeTab = 'info'; 
+                        s.isNewProduct = false; 
+                    });
+                }
             },
-            backToList: () => setState(s => { s.selectedProductId = null; s.viewData = null; s.isNewProduct = false; }),
+            
+            backToList: () => {
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    history.replaceState(null, '', ' ');
+                    setState(s => { s.selectedProductId = null; s.viewData = null; s.isNewProduct = false; });
+                }
+            },
+
             setTab: (tab) => setState(s => s.activeTab = tab),
             
+            // [추가] 검색 및 필터 액션
+            updateSearchQuery: (val) => setState(s => s.searchQuery = val),
+            setCategory: (cat) => setState(s => s.selectedCategory = cat),
+            toggleSort: () => {
+                setState(s => {
+                    s.sortMode = s.sortMode === 'recommend' ? 'price_asc' : 'recommend';
+                    showToast(s.sortMode === 'price_asc' ? "최저가순 정렬" : "추천순 정렬");
+                });
+            },
+
             addProduct: () => {
                 const newProduct = {
                     productName: "",
                     heroImage: "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&q=80&w=1000",
                     category: "신규",
-                    priority: 0, // [추가] 기본 우선순위
+                    priority: 0,
                     operatingHours: "09:00 - 18:00",
                     description: "",
                     pricingOptions: [],
                     policies: { cancellation: "" },
                     faq: []
                 };
+                
+                history.pushState({ mode: 'new' }, '', '#new');
+                
                 setState(s => { s.viewData = newProduct; s.selectedProductId = 'temp_new_id'; s.isNewProduct = true; s.activeTab = 'info'; });
             },
 
@@ -297,7 +376,6 @@
                 }
             },
 
-            // [중요] 입력 시 깜빡임 방지 (화면 갱신 X)
             updateViewData: (field, value) => {
                 state.viewData[field] = value;
             },
@@ -392,12 +470,30 @@
             if (state.loading) {
                 contentHtml = `<div class="min-h-[80vh] flex flex-col items-center justify-center text-gray-400 gap-3"><i data-lucide="loader-2" class="animate-spin-custom text-emerald-600" width="32"></i><span class="text-sm">데이터 불러오는 중...</span></div>`;
             } else if (!state.selectedProductId) {
-                let productItems = state.products.length === 0 ? 
+                // [필터링 로직]
+                let displayProducts = state.products.filter(p => {
+                    const matchQuery = p.productName.toLowerCase().includes(state.searchQuery.toLowerCase());
+                    const matchCat = state.selectedCategory === '전체' || p.category === state.selectedCategory;
+                    return matchQuery && matchCat;
+                });
+
+                // [정렬 로직]
+                if (state.sortMode === 'price_asc') {
+                    displayProducts.sort((a, b) => getMinPrice(a) - getMinPrice(b));
+                }
+                // 추천순(기본)은 Firestore 구독 시 이미 정렬됨
+
+                let productItems = displayProducts.length === 0 ? 
                     `<div class="py-20 text-center text-gray-400 border-2 border-dashed border-gray-200 rounded-xl col-span-full">
-                        등록된 상품이 없습니다.
-                        ${state.isAdmin ? '<br><button onclick="actions.initializeSampleData()" class="text-emerald-600 font-bold mt-2 hover:underline">DB에 샘플 데이터 추가</button>' : ''}
+                        조건에 맞는 상품이 없습니다.
+                        ${state.isAdmin && state.products.length === 0 ? '<br><button onclick="actions.initializeSampleData()" class="text-emerald-600 font-bold mt-2 hover:underline">DB에 샘플 데이터 추가</button>' : ''}
                     </div>` :
-                    state.products.map(p => `
+                    displayProducts.map(p => {
+                        // [추가] 최저가 계산
+                        const minPrice = getMinPrice(p);
+                        const priceText = minPrice !== Infinity ? `<span class="font-bold text-gray-900 text-lg">${formatCurrency(minPrice)}원~</span>` : '<span class="text-xs text-gray-400">가격 문의</span>';
+
+                        return `
                         <div onclick="actions.selectProduct('${p.id}')" class="group bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-all cursor-pointer relative">
                             <div class="relative h-40 bg-gray-200 overflow-hidden">
                                 <img src="${p.heroImage}" alt="${p.productName}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onerror="this.src='https://via.placeholder.com/400x300'"/>
@@ -406,20 +502,59 @@
                             </div>
                             <div class="p-4">
                                 <h3 class="font-bold text-gray-800 line-clamp-1 mb-1">${p.productName}</h3>
-                                <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
-                                    <span class="text-xs text-gray-400">옵션 ${p.pricingOptions?.length || 0}개</span>
-                                    <div class="text-emerald-600 font-bold text-sm">안내 보기 →</div>
+                                <div class="flex justify-between items-end mt-3 pt-3 border-t border-gray-100">
+                                    <div class="flex flex-col">
+                                        <span class="text-[10px] text-gray-400 mb-0.5">최저가</span>
+                                        ${priceText}
+                                    </div>
+                                    <div class="text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded">자세히 보기</div>
                                 </div>
                             </div>
-                        </div>`).join('');
+                        </div>`;
+                    }).join('');
+
+                // [추가] 카테고리 칩 생성
+                const categories = ['전체', ...new Set(state.products.map(p => p.category).filter(Boolean))];
+                const categoryChips = categories.map(cat => 
+                    `<button onclick="actions.setCategory('${cat}')" class="whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors ${state.selectedCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}">${cat}</button>`
+                ).join('');
 
                 contentHtml = `
-                    <div class="p-4 animate-fade-in">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">${state.isAdmin ? '상품 관리 (DB)' : '추천 상품'}</h2>
+                    <div class="p-4 animate-fade-in space-y-4">
+                        <!-- 1. 검색 바 및 정렬 버튼 -->
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 relative">
+                                <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" width="18"></i>
+                                <input 
+                                    type="text" 
+                                    placeholder="상품명 검색..." 
+                                    value="${state.searchQuery}"
+                                    oninput="actions.updateSearchQuery(this.value)"
+                                    class="w-full pl-10 pr-4 py-3 rounded-xl bg-white border border-gray-200 shadow-sm focus:outline-none focus:border-emerald-500 transition-colors text-sm"
+                                />
+                            </div>
+                            <button onclick="actions.toggleSort()" class="p-3 bg-white border border-gray-200 rounded-xl shadow-sm hover:bg-gray-50 transition-colors relative">
+                                <i data-lucide="sliders-horizontal" class="text-gray-600" width="20"></i>
+                                ${state.sortMode === 'price_asc' ? '<span class="absolute top-2 right-2 w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>' : ''}
+                            </button>
+                        </div>
+
+                        <!-- 2. 카테고리 칩 (가로 스크롤) -->
+                        <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                            ${categoryChips}
+                        </div>
+
+                        <!-- 3. 헤더 및 추가 버튼 -->
+                        <div class="flex items-center justify-between pt-2">
+                            <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">
+                                ${state.sortMode === 'price_asc' ? '최저가순' : '추천 상품'} 
+                                <span class="text-sm font-normal text-gray-400">(${displayProducts.length})</span>
+                            </h2>
                             ${state.isAdmin ? `<button onclick="actions.addProduct()" class="bg-emerald-600 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 hover:bg-emerald-700 shadow-sm"><i data-lucide="plus" width="14"></i> 상품 추가</button>` : ''}
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${productItems}</div>
+
+                        <!-- 4. 상품 그리드 -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20">${productItems}</div>
                     </div>`;
             } else if (state.viewData) {
                 const vd = state.viewData;
